@@ -15,12 +15,12 @@ class DoubleBagFTPS < Net::FTP
   attr_reader :ftps_mode
 
   # The OpenSSL::SSL::SSLContext to use for creating all OpenSSL::SSL::SSLSocket objects.
-  attr_accessor :ssl_context
+  attr_accessor :ssl_context_doublebag
 
   def initialize(host = nil, user = nil, passwd = nil, acct = nil, ftps_mode = EXPLICIT, ssl_context_params = {})
     raise ArgumentError unless valid_ftps_mode?(ftps_mode)
     @ftps_mode = ftps_mode
-    @ssl_context = DoubleBagFTPS.create_ssl_context(ssl_context_params)
+    @ssl_context_doublebag = DoubleBagFTPS.create_ssl_context(ssl_context_params)
     super(host, user, passwd, acct)
   end
 
@@ -56,6 +56,7 @@ class DoubleBagFTPS < Net::FTP
   #
   def connect(host, port = ftps_implicit? ? IMPLICIT_PORT : FTP_PORT)
     @hostname = host
+    @sock = BufferedSocket.new(@bare_sock, read_timeout: @read_timeout)
     super
   end
 
@@ -157,14 +158,14 @@ class DoubleBagFTPS < Net::FTP
   #
   def ssl_socket(sock)
     raise 'SSL extension not installed' unless defined?(OpenSSL)
-    sock = OpenSSL::SSL::SSLSocket.new(sock, @ssl_context)
+    sock = OpenSSL::SSL::SSLSocket.new(sock, @ssl_context_doublebag)
     if @ssl_session
       sock.session = @ssl_session
     end
     sock.sync_close = true
     sock.connect
     print "get: #{sock.peer_cert.to_text}" if @debug_mode
-    unless @ssl_context.verify_mode == OpenSSL::SSL::VERIFY_NONE
+    unless @ssl_context_doublebag.verify_mode == OpenSSL::SSL::VERIFY_NONE
       sock.post_connection_check(@hostname)
     end
     @ssl_session = sock.session
@@ -184,6 +185,10 @@ class DoubleBagFTPS < Net::FTP
 
     def sock.shutdown(how)
       @shutdown = true
+    end
+
+    def sock.remote_address
+      io.remote_address
     end
 
     def sock.read_timeout=(seconds)
